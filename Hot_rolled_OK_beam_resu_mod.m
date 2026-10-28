@@ -1249,7 +1249,7 @@ if residual_pattern==3  % Lahiru: Dissanayake, Yang, Walport & Gardner (2026)
 
     % Web centre stress sigma_wc (Table 8)
     if Lahiru_equilibrium==1      % with fillets, Eq.(9)
-        sig_wc_Lah = -( Af_Lah*(sig_fw_Lah+sig_ft_Lah) + sigL_fw_Lah*(Aw_Lah/3+Ar_Lah*(2*zc_Lah/hw_Lah)^2) ) ...
+        sig_wc_Lah = -( Af_Lah*(sig_fw_Lah+sig_ft_Lah) + sig_fw_Lah*(Aw_Lah/3+Ar_Lah*(2*zc_Lah/hw_Lah)^2) ) ...
                      /( 2*Aw_Lah/3 + Ar_Lah*(1-(2*zc_Lah/hw_Lah)^2) );
     elseif Lahiru_equilibrium==2  % without fillets, Eq.(10)
         sig_wc_Lah = -(3*Af_Lah*(sig_fw_Lah+sig_ft_Lah)+sig_fw_Lah*Aw_Lah)/(2*Aw_Lah);
