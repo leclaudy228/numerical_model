@@ -1,0 +1,223 @@
+%% =========================================================
+%  Evaluation manuelle du modele de flambement - Eurocode 3
+%  chi = 1 / (Phi + sqrt(Phi^2 - lambda^p))     avec chi <= 1
+%  Phi = 0.5 * [1 + alpha*(lambda - 0.2) + lambda^p]
+%
+%  PAS D'OPTIMISATION ICI : alpha et p sont fixes a la main
+%  ci-dessous. Deux jeux de donnees (1 et 2) sont evalues
+%  separement, avec leur propre alpha, et traces ensemble sur
+%  le meme graphique.
+%  =========================================================
+clear; clc; close all;
+
+
+%% --- 1. DONNEES EXPERIMENTALES (lues depuis Excel, 2 jeux de donnees) ---
+
+fichier_excel = 'Result_new - version 3.xlsm';
+feuille       = 'Welded shape';
+
+% --- Jeu de donnees 1 : pour Xhi dans [0.85 ; 2.5[ ---
+range_chi_1    = 'A3:A74';   % <-- colonne corrigee (A avant B)
+range_lambda_1 = 'B3:B74';
+
+% --- Jeu de donnees 2 : pour Xhi dans [2.5 ; 7.1[ ---
+range_chi_2    = 'D3:D74';
+range_lambda_2 = 'E3:E74';
+
+lambda_data_1 = readmatrix(fichier_excel, 'Sheet', feuille, 'Range', range_lambda_1)';
+chi_data_1    = readmatrix(fichier_excel, 'Sheet', feuille, 'Range', range_chi_1)';
+
+lambda_data_2 = readmatrix(fichier_excel, 'Sheet', feuille, 'Range', range_lambda_2)';
+chi_data_2    = readmatrix(fichier_excel, 'Sheet', feuille, 'Range', range_chi_2)';
+
+% Retrait des cellules vides (NaN), lambda et chi retires ensemble
+[lambda_data_1, chi_data_1] = nettoyer_paire(lambda_data_1, chi_data_1);
+[lambda_data_2, chi_data_2] = nettoyer_paire(lambda_data_2, chi_data_2);
+
+assert(length(lambda_data_1) == length(chi_data_1), ...
+    'Erreur : lambda_data_1 et chi_data_1 doivent avoir la meme longueur.');
+assert(length(lambda_data_2) == length(chi_data_2), ...
+    'Erreur : lambda_data_2 et chi_data_2 doivent avoir la meme longueur.');
+
+
+%% --- 2. VALEURS A TESTER MANUELLEMENT ---
+% <-- Modifiez ces valeurs pour explorer differentes combinaisons.
+
+alpha_test_1 = 0.25;   % <-- alpha a evaluer pour le jeu de donnees 1
+alpha_test_2 = 0.25;   % <-- alpha a evaluer pour le jeu de donnees 2
+p_test       = 2;      % <-- exposant p, partage par les deux evaluations
+lambda0_fixe = 0.1;    % <-- lambda0, partage (reste fixe, valeur EC3 classique)
+
+
+%% --- 3. MODELE ---
+
+phi_fun = @(alpha, p, lam) 0.5 .* (1 + alpha .* (lam - lambda0_fixe) + 1.0*lam.^p);
+
+chi_fun = @(alpha, p, lam) min(1.0, ...
+    1 ./ (phi_fun(alpha, p, lam) + sqrt(max(0, phi_fun(alpha, p, lam).^2 - lam.^p))));
+
+
+%% --- 4. EVALUATION DE L'AJUSTEMENT POUR CHAQUE JEU DE DONNEES ---
+% Aucun fminbnd/lsqnonlin ici : on calcule juste la qualite de l'ajustement
+% pour LES VALEURS CHOISIES ci-dessus, separement pour chaque jeu.
+
+% --- Evaluation 1 ---
+chi_fit_1   = chi_fun(alpha_test_1, p_test, lambda_data_1);
+residuals_1 = chi_data_1 - chi_fit_1;
+SSres_1     = sum(residuals_1.^2);
+SStot_1     = sum((chi_data_1 - mean(chi_data_1)).^2);
+R2_1        = 1 - SSres_1 / SStot_1;
+RMSE_1      = sqrt(mean(residuals_1.^2));
+MAE_1       = mean(abs(residuals_1));
+
+% --- Evaluation 2 ---
+chi_fit_2   = chi_fun(alpha_test_2, p_test, lambda_data_2);
+residuals_2 = chi_data_2 - chi_fit_2;
+SSres_2     = sum(residuals_2.^2);
+SStot_2     = sum((chi_data_2 - mean(chi_data_2)).^2);
+R2_2        = 1 - SSres_2 / SStot_2;
+RMSE_2      = sqrt(mean(residuals_2.^2));
+MAE_2       = mean(abs(residuals_2));
+
+
+%% --- 4bis. ANALYSE DU RATIO chi_fit / chi_data ---
+% Objectif : verifier si le modele est plutot conservateur (ratio < 1,
+% donc chi_fit < chi_data) ou non-conservateur (ratio > 1).
+
+ratio_1 = chi_fit_1 ./ chi_data_1;
+ratio_2 = chi_fit_2 ./ chi_data_2;
+ratio_all = [ratio_1, ratio_2];   % ensemble combine des 2 jeux
+
+stats_1   = calculer_stats_ratio(ratio_1);
+stats_2   = calculer_stats_ratio(ratio_2);
+stats_all = calculer_stats_ratio(ratio_all);
+
+afficher_stats_ratio('Jeu de donnees 1', stats_1);
+afficher_stats_ratio('Jeu de donnees 2', stats_2);
+afficher_stats_ratio('Ensemble combine (1+2)', stats_all);
+
+
+%% --- 5. RESUME CONSOLE ---
+
+fprintf('\n==========================================\n');
+fprintf('  EVALUATION MANUELLE (pas de calibration)\n');
+fprintf('==========================================\n');
+fprintf('  --- Jeu de donnees 1 ---\n');
+fprintf('  alpha teste  : %.4f\n', alpha_test_1);
+fprintf('  R2           : %.6f\n', R2_1);
+fprintf('  RMSE         : %.6f\n', RMSE_1);
+fprintf('  MAE          : %.6f\n', MAE_1);
+fprintf('  Nb points    : %d\n',   length(lambda_data_1));
+fprintf('  --- Jeu de donnees 2 ---\n');
+fprintf('  alpha teste  : %.4f\n', alpha_test_2);
+fprintf('  R2           : %.6f\n', R2_2);
+fprintf('  RMSE         : %.6f\n', RMSE_2);
+fprintf('  MAE          : %.6f\n', MAE_2);
+fprintf('  Nb points    : %d\n',   length(lambda_data_2));
+fprintf('  --- Parametres partages ---\n');
+fprintf('  p        : %.4f  (fixe)\n', p_test);
+fprintf('  lambda0  : %.4f  (fixe)\n', lambda0_fixe);
+fprintf('==========================================\n\n');
+
+
+%% --- 6. FIGURE : les 2 jeux de donnees + les 2 courbes testees ---
+
+lam_max = max([lambda_data_1, lambda_data_2]);   % echelle commune pour les 2 courbes
+lam_plot = linspace(0, lam_max * 1.1, 400);
+
+chi_plot_1 = chi_fun(alpha_test_1, p_test, lam_plot);
+chi_plot_1(1) = 1;   % verrou numerique : chi(lambda=0) = 1
+
+chi_plot_2 = chi_fun(alpha_test_2, p_test, lam_plot);
+chi_plot_2(1) = 1;
+
+figure('Color', 'white', 'Position', [100 100 650 450]);
+ax = axes; hold(ax, 'on'); grid(ax, 'on');
+
+% --- Points experimentaux, jeu 1 ---
+scatter(ax, lambda_data_1, chi_data_1, 40, [0.843 0.188 0.122], 'filled', 'o', ...
+    'MarkerEdgeColor', 'black', 'LineWidth', 0.6, ...
+    'DisplayName', '\xi \in [0.85 ; 2.5[');
+
+% --- Points experimentaux, jeu 2 ---
+scatter(ax, lambda_data_2, chi_data_2, 40, [0.000 0.180 0.600], 'filled', 's', ...
+    'MarkerEdgeColor', 'black', 'LineWidth', 0.6, ...
+    'DisplayName', '\xi \in [2.5 ; 7.1[');
+
+% --- Courbe testee, jeu 1 ---
+plot(ax, lam_plot, chi_plot_1, '-', ...
+    'Color', [0.843 0.188 0.122], 'LineWidth', 2.2, ...
+    'DisplayName', sprintf('\\alpha_1=%.3f, p=%.2f  (R^2=%.4f)', alpha_test_1, p_test, R2_1));
+
+% --- Courbe testee, jeu 2 ---
+plot(ax, lam_plot, chi_plot_2, '--', ...
+    'Color', [0.000 0.180 0.600], 'LineWidth', 2.2, ...
+    'DisplayName', sprintf('\\alpha_2=%.3f, p=%.2f  (R^2=%.4f)', alpha_test_2, p_test, R2_2));
+
+xlabel(ax, '$\bar{\lambda}_G$', 'Interpreter', 'latex', 'FontSize', 16, 'Color', 'black');
+ylabel(ax, '${\chi}_G$', 'Interpreter', 'latex', 'FontSize', 16, 'Color', 'black');
+title(ax, 'Buckling curves - I shape', ...
+    'FontSize', 13, 'FontWeight', 'bold', 'Color', 'black');
+xlim(ax, [0, max(lam_plot)]);
+ylim(ax, [0, 1.15]);
+legend(ax, 'Location', 'northeast', 'TextColor', 'black', 'EdgeColor', 'black', 'Color', 'white');
+
+set(ax, 'Box', 'on', ...
+    'Color', 'white', ...
+    'XColor', 'black', ...
+    'YColor', 'black', ...
+    'GridColor', [0 0 0]);
+
+%% --- 7. Enregistrement de la figure en PNG ---
+exportgraphics(gcf, 'buckling_curves_I_shape.png', 'Resolution', 300);
+
+
+%% --- FONCTIONS LOCALES ---
+
+function [lambda_propre, chi_propre] = nettoyer_paire(lambda_brut, chi_brut)
+    valide        = ~isnan(lambda_brut) & ~isnan(chi_brut);
+    lambda_propre = lambda_brut(valide);
+    chi_propre    = chi_brut(valide);
+end
+
+function stats = calculer_stats_ratio(ratio)
+    % Calcule les statistiques descriptives du ratio chi_fit/chi_data
+    stats.n        = numel(ratio);
+    stats.mean     = mean(ratio);
+    stats.std      = std(ratio);
+    stats.cov      = stats.std / stats.mean;   % coefficient de variation
+    stats.min      = min(ratio);
+    stats.max      = max(ratio);
+
+    % Compteurs "au-dessus de" (modele non conservateur)
+    stats.n_gt_1_00  = sum(ratio > 1.00);
+    stats.n_gt_1_03  = sum(ratio > 1.03);
+    stats.n_gt_1_10  = sum(ratio > 1.10);
+    stats.n_gt_1_25  = sum(ratio > 1.25);
+
+    % Compteurs "en-dessous de" (modele conservateur)
+    stats.n_lt_0_95  = sum(ratio < 0.95);
+    stats.n_lt_0_90  = sum(ratio < 0.90);
+    stats.n_lt_0_75  = sum(ratio < 0.75);
+end
+
+function afficher_stats_ratio(nom, stats)
+    fprintf('\n------------------------------------------\n');
+    fprintf('  RATIO chi_fit / chi_data : %s\n', nom);
+    fprintf('------------------------------------------\n');
+    fprintf('  Nb points     : %d\n',   stats.n);
+    fprintf('  Moyenne       : %.4f\n', stats.mean);
+    fprintf('  Ecart-type    : %.4f\n', stats.std);
+    fprintf('  CoV           : %.4f  (%.2f %%)\n', stats.cov, stats.cov*100);
+    fprintf('  Min           : %.4f\n', stats.min);
+    fprintf('  Max           : %.4f\n', stats.max);
+    fprintf('  --- Ratios superieurs a ---\n');
+    fprintf('  > 1.00        : %d  (%.1f %%)\n', stats.n_gt_1_00, 100*stats.n_gt_1_00/stats.n);
+    fprintf('  > 1.03        : %d  (%.1f %%)\n', stats.n_gt_1_03, 100*stats.n_gt_1_03/stats.n);
+    fprintf('  > 1.10        : %d  (%.1f %%)\n', stats.n_gt_1_10, 100*stats.n_gt_1_10/stats.n);
+    fprintf('  > 1.25        : %d  (%.1f %%)\n', stats.n_gt_1_25, 100*stats.n_gt_1_25/stats.n);
+    fprintf('  --- Ratios inferieurs a ---\n');
+    fprintf('  < 0.95        : %d  (%.1f %%)\n', stats.n_lt_0_95, 100*stats.n_lt_0_95/stats.n);
+    fprintf('  < 0.90        : %d  (%.1f %%)\n', stats.n_lt_0_90, 100*stats.n_lt_0_90/stats.n);
+    fprintf('  < 0.75        : %d  (%.1f %%)\n', stats.n_lt_0_75, 100*stats.n_lt_0_75/stats.n);
+end
