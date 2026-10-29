@@ -88,7 +88,7 @@ nb=size(sequence);
 parameters_section = [];
 % for o=[1] o=1:1:nb(1) o=[54 55 56 62 63 64 70 71 72 78 79 80 86 87 88 94 95 96]
 
-for o=[1]
+for o=1:1:288
 Number=parameters(o,1);                      %The number of the parameter studies
 B1=parameters(o,2);                          %Full width of upper flange input by user
 B2=parameters(o,3);                          %Full width of lower flange input by user
@@ -1318,7 +1318,7 @@ Set_nodes_BC2 = V2(2:end-1);
 %% Generate Batch for inp and python file 
     fid = fopen(strcat(Path2,'Batch for inp and py.bat'),'at');
     % fprintf(fid,'%s \n',['cmd/c abaqus job=' headname '__' num2str(Number) '  interactive']);   
-    fprintf(fid,'%s \n',['cmd/c abaqus job=' headname '__' num2str(Number) ' cpus=25  interactive']);   
+    fprintf(fid,'%s \n',['cmd/c abaqus job=' headname '__' num2str(Number) ' cpus=20  interactive']);   
     fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.prt']);
     fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.res']);
     fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.sim']);
@@ -1332,7 +1332,7 @@ Set_nodes_BC2 = V2(2:end-1);
         %fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.dat']);
         %fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.txt']);
         fprintf(fid,'%s \n',['cmd/c abaqus cae noGUI=' headname '__' num2str(Number) '.py']);   
-        %fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.odb']);
+        fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.odb']);
     end
    
     % fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.dat']);  
@@ -1788,7 +1788,7 @@ end
 end
 % Écriture dans Excel
 T = array2table(parameters_section, 'VariableNames', {'i', 'A', 'Ixx', 'Izz'});
-writetable(T, 'parameters_section_HEB.xlsx', 'Sheet', 1);
+writetable(T, 'parameters_section_All.xlsx', 'Sheet', 1);
 
 
 
