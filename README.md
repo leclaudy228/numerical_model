@@ -26,6 +26,8 @@ This is a research workspace with multiple script variants and saved study outpu
 | --- | --- |
 | `Hot_rolled_OK*.m` | Abaqus model generators for hot-rolled I-sections, including beam and spring variants. |
 | `Welded_I_section*.m` | Abaqus model generators for welded I-sections and related variants. |
+| [Aluminum_Welded_I_section_3PB.m](Aluminum_Welded_I_section_3PB.m) | Welded aluminum I-section generator with transverse stiffeners, separate HAZ materials, and three-point bending. See [setup and assumptions](ALUMINUM_3PB.md). |
+| [Aluminum_3PB_Input.xlsx](Aluminum_3PB_Input.xlsx) | Excel input workbook for the aluminum model. Edit/save it, then run `run_aluminum_3pb_excel` in MATLAB. |
 | [Get_GMNIA_and_LBA_Results_Equation.m](Get_GMNIA_and_LBA_Results_Equation.m) | Processes exported Abaqus results for LBA, MNA, and GMNIA cases into spreadsheets. |
 | `mean_square*.m` | Buckling curve fitting and evaluation experiments, including Eurocode 3 style equations. Some versions optimize parameters; others evaluate manually selected values. |
 | [Step1_calibrate_chiG_pureN_master.m](Step1_calibrate_chiG_pureN_master.m) | Master global buckling calibration workflow for pure compression. |
