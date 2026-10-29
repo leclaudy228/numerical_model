@@ -86,6 +86,21 @@ sequence=parameters(:,1);
 nb=size(sequence); 
 % [41] 1:1:96    57 65 73 81 89 o=[53 61 69 77 85 93]
 parameters_section = [];
+
+%% Mesh and Riks parameters (formerly '2. General_parameters.dat')
+nwH = 13;             % number of elements in the web, H sections (h/b < 1.2)
+nwI = 13;             % number of elements in the web, I sections (h/b >= 1.2)
+Initial_inc = 0.5;    % initial arc-length increment
+Scale_fact  = 1;      % total arc-length scale factor
+Min_inc     = 0.001;  % minimum arc-length increment
+
+%% Run options
+reduced_output = 1;  % 1 = field output only for the nodes read by the .py (+ full field every 25 inc.) ; 0 = full PRESELECT field output every increment
+keep_odb       = 0;   % 1 = keep the .odb after extraction (visualisation) ; 0 = delete it in the batch
+lambda_switch  = 1.2; % major-axis slenderness above which the long-column Riks settings are used
+riks_short     = [0.5 100];  % [max arc-length increment, max number of increments] for lambda <= lambda_switch
+riks_long      = [5   150];  % idem for lambda >  lambda_switch (tested: same peak within 0.02%)
+
 % for o=[1] o=1:1:nb(1) o=[54 55 56 62 63 64 70 71 72 78 79 80 86 87 88 94 95 96]
 
 for o=1:1:288
@@ -139,11 +154,6 @@ Designation=Sectiontype{1}{o};
 
 headname_original = strcat(First_headname_original,'_',num2str(Fy),'_',Designation,'_',num2str(Temperature));
 
-%Meshsize values
-Meshsize=dlmread('2. General_parameters.dat');
-
-nwH=Meshsize(1,6);
-nwI=Meshsize(1,7);
 
 %nw=parameters(o,20);  
 if (H/(0.5*(B1+B2)))<1.2  % <1.2 H section; >1.2 I section
@@ -1331,8 +1341,10 @@ Set_nodes_BC2 = V2(2:end-1);
     if analysis==2||analysis==3
         %fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.dat']);
         %fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.txt']);
-        fprintf(fid,'%s \n',['cmd/c abaqus cae noGUI=' headname '__' num2str(Number) '.py']);   
-        fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.odb']);
+        fprintf(fid,'%s \n',['cmd/c abaqus cae noGUI=' headname '__' num2str(Number) '.py']);
+        if ~keep_odb
+            fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.odb']);
+        end
     end
    
     % fprintf(fid,'%s \n',['del ' headname '__' num2str(Number) '.dat']);  
@@ -1366,8 +1378,10 @@ if analysis==2||analysis==3
 if Loading==1
     % fprintf(fid,'%s \r\n',['session.xyDataListFromField(odb=odb, outputPosition=NODAL, variable=((''U'', NODAL, ((COMPONENT, ''U3''), )), ), nodeSets=(''PART-1-1.END1'', ))']);
     % fprintf(fid,'%s \r\n',['session.xyDataObjects.changeKey(fromName=''U:U3 PI: PART-1-1 N: ' num2str(FEnode_centroid(1,1)) ''',toName=''U''+str(' 'n' ')+''__' num2str(Number) ''')']);
-    fprintf(fid,'%s \r\n',['session.xyDataListFromField(odb=odb, outputPosition=NODAL, variable=((''U'', NODAL, ((COMPONENT, ''U1''), )), ), nodeLabels=((''PART-1-1'', (''' num2str(FEnode_centroid(3,1)) ''' ,)), ))']);
-    fprintf(fid,'%s \r\n',['session.xyDataObjects.changeKey(fromName=''U:U1 PI: PART-1-1 N: ' num2str(FEnode_centroid(3,1)) ''', toName=''U_''+str(' 'n' ')+''__' num2str(Number) ''')']);
+    % lateral deflection at mid-length in the direction of the global imperfection (major axis -> U2)
+    if mjglobalampli==0 && miglobalampli~=0, Ucomp='U1'; else, Ucomp='U2'; end
+    fprintf(fid,'%s \r\n',['session.xyDataListFromField(odb=odb, outputPosition=NODAL, variable=((''U'', NODAL, ((COMPONENT, ''' Ucomp '''), )), ), nodeLabels=((''PART-1-1'', (''' num2str(FEnode_centroid(3,1)) ''' ,)), ))']);
+    fprintf(fid,'%s \r\n',['session.xyDataObjects.changeKey(fromName=''U:' Ucomp ' PI: PART-1-1 N: ' num2str(FEnode_centroid(3,1)) ''', toName=''U_''+str(' 'n' ')+''__' num2str(Number) ''')']);
     fprintf(fid,'%s \r\n',[ ]);
     fprintf(fid,'%s \r\n',['session.xyDataListFromField(odb=odb, outputPosition=NODAL, variable=((''RF'', NODAL, ((COMPONENT, ''RF3''), )), ), nodeSets=(''PART-1-1.RP2'', ))']);
     fprintf(fid,'%s \r\n',['session.xyDataObjects.changeKey(fromName=''RF:RF3 PI: PART-1-1 N: ' num2str(FEnode_ref_2) ''', toName=''RF_''+str(' 'n' ')+''__' num2str(Number) ''')']);
@@ -1437,8 +1451,8 @@ end
     fprintf(fid,'%s \r\n','All units are in N & mm');
     fprintf(fid,'%s %d %s \r\n','Total column length =',L,'mm');
     fprintf(fid,'%s \r\n',[savename,' ',datestr(now)]);
-    fprintf(fid,'%s \r\n','*RESTART, WRITE');
-    
+    % no *RESTART, WRITE: restart files were never read and cost up to 19 GB per job
+
     fprintf(fid,'%s \r\n','*****************************');
     fprintf(fid,'%s \r\n','**Node set for end boundary conditions');
     fprintf(fid,'%s \r\n','*****************************');
@@ -1687,6 +1701,10 @@ fprintf(fid,'%d\t,   %f\t,   %f\t,   %f\t  \r\n',FEnode_ref_1, xr1, yr1,zr1);
 fprintf(fid,'*NODE, NSET=RP2  \r\n');
 fprintf(fid,'%d\t,   %f\t,   %f\t,   %f\t  \r\n',FEnode_ref_2, xr2, yr2,zr2);
 
+% Nodes read by the .py (mid-length node, RP1, RP2) for the reduced field output
+fprintf(fid,'*NSET, NSET=OUT_PY\r\n');
+fprintf(fid,'%d, %d, %d\r\n',FEnode_centroid(3,1), FEnode_ref_1, FEnode_ref_2);
+
 
 %% Kinematic Coupling
 % --- Couplings (inside the same PART) ---
@@ -1734,13 +1752,15 @@ end
 end
 %% STEP
 
-Step=dlmread('2. General_parameters.dat');
-
-    Initial_inc=Step(1,1);
-    Scale_fact=Step(1,2);
-    Min_inc=Step(1,3);
-    Max_inc=Step(1,4);
-    Max_nb_inc=Step(1,5);
+    % Riks settings from the major-axis member slenderness:
+    % short columns peak early and need small arc-length steps to catch the peak;
+    % long columns reach it only after a long arc length and can take larger steps.
+    lambda_y = sqrt(A*Fy/(pi^2*ME*Ixx/L(1)^2));
+    if lambda_y <= lambda_switch
+        Max_inc = riks_short(1);  Max_nb_inc = riks_short(2);
+    else
+        Max_inc = riks_long(1);   Max_nb_inc = riks_long(2);
+    end
 
 if analysis==1
    fprintf(fid,'*STEP \r\n');
@@ -1772,7 +1792,14 @@ fprintf(fid,'******LOADS******\r\n\n');
 fprintf(fid,'%s\r\n','*CLOAD');
 fprintf(fid,'%s\t\t,%d\t\t,%d\t\t\r\n','RP1',3, Load_N); 
 
-fprintf(fid,'%s \r\n','*Output, field, variable=PRESELECT ');
+if reduced_output && (analysis==2||analysis==3)
+    fprintf(fid,'%s\r\n','*Output, field, frequency=1');
+    fprintf(fid,'%s\r\n','*Node Output, nset=OUT_PY');
+    fprintf(fid,'%s\r\n','U, RF');
+    fprintf(fid,'%s\r\n','*Output, field, variable=PRESELECT, frequency=25');
+else
+    fprintf(fid,'%s \r\n','*Output, field, variable=PRESELECT ');
+end
 fprintf(fid,'%s \r\n','*Output, history, variable=PRESELECT ');
 if analysis==1&&caculation_number==2
     fprintf(fid,'%s\r\n','*node file');
