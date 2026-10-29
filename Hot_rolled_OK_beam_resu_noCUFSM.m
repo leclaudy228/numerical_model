@@ -9,7 +9,6 @@
 %% Objective
 %Creation of an ABAQUS shell model (S4R) of a hot-rolled I-section from a
 %2D strip model of the mid-surface cross-section, built directly in MATLAB.
-%(Derived from the CUFSM-to-ABAQUS template; no CUFSM function is used.)
 
 %% Assumptions
 %(1)ABAQUS S4/S4R shell elements are used for the plates.
@@ -291,19 +290,29 @@ xr2 = ex; yr2=ey; zr2= L+delta_u;
 
 prop=[100 ME ME 0.30 0.30 ME/2/(1+0.3);200 ME ME 0.30 0.30 ME/2/(1+0.3);300 ME ME 0.30 0.30 ME/2/(1+0.3)];   
   
-%%Read .dat files
+%% Material law (true stress - plastic strain for ABAQUS *PLASTIC)
+% Yun & Gardner (2017), "Stress-strain curves for hot-rolled steels",
+% Journal of Constructional Steel Research 133, 36-46. https://doi.org/10.1016/j.jcsr.2017.01.024
+% Generated from E and fy only; fu is the nominal value of the grade (EN 1993-1-1 Table 3.1).
+% The same law is used for the web and both flanges.
 
+material_model = 1;        % 1 = quad-linear, Eq.(3) ; 2 = bilinear + nonlinear hardening, Eq.(14)
 
-Upperflangedata = dlmread('5. Upperflangedata.dat');
-Lowerflangedata = dlmread('6. Lowerflangedata.dat');
-Webdata = dlmread('7. Webdata.dat');
+if Temperature~=20
+    warning('Yun & Gardner material law is for ambient temperature (Temperature = %g C).',Temperature);
+end
 
-sigma_pl_upperflange(:,1)=Upperflangedata(:,1);
-epsilon_pl_upperflange(:,1)=Upperflangedata(:,2);
-sigma_pl_lowerflange(:,1)=Lowerflangedata(:,1);
-epsilon_pl_lowerflange(:,1)=Lowerflangedata(:,2);
-sigma_pl_web(:,1)=Webdata(:,1);
-epsilon_pl_web(:,1)=Webdata(:,2);
+fu = fu_nominal(Fy);
+[sigma_true_mat,epsilon_pl_mat,mat_info] = yun_gardner_material(ME,Fy,fu,material_model);
+fprintf('Material (Yun & Gardner, model %d): fy=%g  fu=%g MPa  eps_sh=%.4f  eps_u=%.4f  Esh=%.0f MPa  |  %d points\n', ...
+    material_model,Fy,fu,mat_info.eps_sh,mat_info.eps_u,mat_info.Esh,numel(sigma_true_mat));
+
+sigma_pl_upperflange=sigma_true_mat;
+epsilon_pl_upperflange=epsilon_pl_mat;
+sigma_pl_lowerflange=sigma_true_mat;
+epsilon_pl_lowerflange=epsilon_pl_mat;
+sigma_pl_web=sigma_true_mat;
+epsilon_pl_web=epsilon_pl_mat;
 
 f_1=size(sigma_pl_upperflange);
 f_2=size(sigma_pl_lowerflange);
@@ -1864,4 +1873,61 @@ end
 if abs(Zs/sqrt(A)) < 1e-12
     Zs = 0;
 end
+end
+
+%% ------------------------------------------------------------------------
+function fu = fu_nominal(fy)
+% Nominal ultimate tensile strength fu (MPa) of the steel grade, t <= 40 mm
+% (EN 1993-1-1 Table 3.1 and EN 1993-1-12). Add a row for any other grade.
+%         fy    fu
+grades = [235   360;    % S235  (EN 10025-2)
+          275   430;    % S275  (EN 10025-2)
+          355   490;    % S355  (EN 10025-2)
+          420   520;    % S420  (EN 10025-4)
+          440   550;    % S450  (EN 10025-2, fy = 440 for t <= 40 mm)
+          460   540;    % S460  (EN 10025-4)
+          690   770;    % S690Q (EN 10025-6)
+          960   980];   % S960Q (EN 10025-6)
+
+k = find(abs(grades(:,1)-fy)<1e-6,1);
+if isempty(k)
+    error('No nominal fu for fy = %g MPa: add the grade to fu_nominal.',fy);
+end
+fu = grades(k,2);
+end
+
+%% ------------------------------------------------------------------------
+function [sig_true,eps_pl,info] = yun_gardner_material(E,fy,fu,model)
+% Engineering stress-strain curve of hot-rolled steel from Yun & Gardner (2017),
+% converted to true stress / logarithmic plastic strain for ABAQUS *PLASTIC.
+% model = 1: quad-linear, Eq.(3) ; model = 2: bilinear + nonlinear hardening, Eq.(14)
+
+eps_y  = fy/E;
+eps_u  = max(0.6*(1-fy/fu),0.06);                 % Eq.(8)
+eps_sh = min(max(0.1*fy/fu-0.055,0.015),0.03);    % Eq.(9)
+Esh    = (fu-fy)/(0.4*(eps_u-eps_sh));            % Eq.(13)
+
+if model==1
+    eps_C1 = eps_sh+0.25*(eps_u-eps_sh);          % C1*eps_u, Eq.(11)
+    f_C1   = fy+Esh*(eps_C1-eps_sh);
+    eps = [eps_y; eps_sh; eps_C1; eps_u];
+    sig = [fy;    fy;     f_C1;   fu];
+elseif model==2
+    x   = linspace(0,1,51)';                      % (eps-eps_sh)/(eps_u-eps_sh), 50 hardening segments
+    eps = [eps_y; eps_sh+x*(eps_u-eps_sh)];
+    sig = [fy; fy+(fu-fy)*(0.4*x+2*x./(1+400*x.^5).^(1/5))];   % K1=0.4, K2=2, K3=400, K4=5
+else
+    error('material_model must be 1 or 2.');
+end
+
+% True stress and logarithmic plastic strain
+sig_true = sig.*(1+eps);
+eps_pl   = log(1+eps)-sig_true/E;
+eps_pl(1) = 0;                                    % yield point (round-off of order eps_y^2)
+
+if any(diff(eps_pl)<=0)
+    error('Plastic strain of the material law is not increasing.');
+end
+
+info = struct('eps_y',eps_y,'eps_sh',eps_sh,'eps_u',eps_u,'Esh',Esh);
 end
