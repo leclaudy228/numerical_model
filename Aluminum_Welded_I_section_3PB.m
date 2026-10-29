@@ -44,6 +44,7 @@ end
 elements=reshape(mapping(conn),size(conn));
 centroids=(nodes(elements(:,1),:)+nodes(elements(:,2),:)+ ...
     nodes(elements(:,3),:)+nodes(elements(:,4),:))/4;
+material=zeros(size(elements,1),1);
 for k=1:size(elements,1)
     p=centroids(k,:); typ=component(k);
     if typ==1
