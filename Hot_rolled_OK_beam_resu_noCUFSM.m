@@ -59,13 +59,6 @@ end
 Path2 = [newFolderPath filesep];
 %%
 
-
-% if ~exist(Foldername,'dir')==1
-%     mkdir(Foldername);
-% end
-% 
-% Path2 = strcat(pwd,'\',Foldername,'\');
-
 if  exist(strcat(Path2,'Filename.dat'),'var')==0
     delete(strcat(Path2,'Filename.dat'));
 end
@@ -90,16 +83,29 @@ parameters_section = [];
 %% Mesh and Riks parameters (formerly '2. General_parameters.dat')
 nwH = 13;             % number of elements in the web, H sections (h/b < 1.2)
 nwI = 13;             % number of elements in the web, I sections (h/b >= 1.2)
-Initial_inc = 0.5;    % initial arc-length increment
-Scale_fact  = 1;      % total arc-length scale factor
-Min_inc     = 0.001;  % minimum arc-length increment
+% [OLD] Riks parameters -> now in riks_opt (see riks_control)
+% Initial_inc = 0.5;    % initial arc-length increment
+% Scale_fact  = 1;      % total arc-length scale factor
+% Min_inc     = 0.001;  % minimum arc-length increment
+
+%% Riks (arc-length) control of the GMNIA step -- see riks_control() at the end of the file
+% The step stops at the first of: max number of increments, min arc-length
+% increment (non-convergence), or max mid-length deflection L/defl_ratio.
+riks_opt.initial_inc   = 0.5;       % initial arc-length increment
+riks_opt.scale_fact    = 1;         % total arc-length scale factor
+riks_opt.min_inc       = 1e-3;      % minimum arc-length increment
+riks_opt.lambda_switch = 1.2;       % major-axis slenderness separating short / long members
+riks_opt.short         = [0.5 100]; % [max arc-length increment, max number of increments], lambda <= lambda_switch
+riks_opt.long          = [5   150]; % idem, lambda > lambda_switch (tested: same peak within 0.02%)
+riks_opt.defl_ratio    = 25;        % stop when the mid-length deflection reaches L/defl_ratio (0 = criterion off)
 
 %% Run options
 reduced_output = 1;  % 1 = field output only for the nodes read by the .py (+ full field every 25 inc.) ; 0 = full PRESELECT field output every increment
 keep_odb       = 0;   % 1 = keep the .odb after extraction (visualisation) ; 0 = delete it in the batch
-lambda_switch  = 1.2; % major-axis slenderness above which the long-column Riks settings are used
-riks_short     = [0.5 100];  % [max arc-length increment, max number of increments] for lambda <= lambda_switch
-riks_long      = [5   150];  % idem for lambda >  lambda_switch (tested: same peak within 0.02%)
+% [OLD] -> now in riks_opt
+% lambda_switch  = 1.2; % major-axis slenderness above which the long-column Riks settings are used
+% riks_short     = [0.5 100];  % [max arc-length increment, max number of increments] for lambda <= lambda_switch
+% riks_long      = [5   150];  % idem for lambda >  lambda_switch (tested: same peak within 0.02%)
 
 % for o=[1] o=1:1:nb(1) o=[54 55 56 62 63 64 70 71 72 78 79 80 86 87 88 94 95 96]
 
@@ -114,19 +120,17 @@ tw=parameters(o,7);                          %Thickness of web input by user
 r1=parameters(o,8);                          %upper radius
 r2=parameters(o,9);                          %lLoad_Nower radius
 L=parameters(o,10);
-%L=B1;
-% L= 5*B1;% if L=0, thus L=3*periodicity
+
 periodicity_input=parameters(o,11);          %Periodicity adopted in this model (1,2,3 ou else)
 magnitudeB1_input=parameters(o,12);          %Magnitude of the upper flange (0,1,2,3 ou else
 magnitudeB2_input=parameters(o,13);          %Magnitude of the lower flange 
 magnitudeH_input=parameters(o,14);           %Magnitude of the web
 percentage=parameters(o,15);                 %Percentage of the imperfection
-% mjglobalampli=parameters(o,16);              %Amplitude of global imperfection (major axis)
-% miglobalampli=parameters(o,17);              %Amplitude of global imperfection (minor axis)
+
 torsionalampli=parameters(o,18);             %Amplitude of torsional imperfection (minor axis)
 analysis=parameters(o,19);                   %1--LBA; 2--Eig+GMNIA; 3--GMNIA
 Loading=parameters(o,20);                    %1--N; 2--My; 3--Mz; 4--N+My; 5--N+Mz; 6--My+Mz; 7--N+My+Mz
-Load_N=parameters(o,21)*1000;                     %Initial load (Compression-kN)---N
+Load_N=parameters(o,21)*1000;                %Initial load (Compression-kN)---N
 Load_My=parameters(o,22);                    %Initial load (Bending-kNm)
 Load_Mz=parameters(o,23);                    %Initial load (Bending-kNm)
 
@@ -138,7 +142,6 @@ miglobalampli=0;
                              
 % localampli=parameters(o,30)*1;
 localampli=0;
-% ecc=parameters(o,31); % set excentricity
 ecc=0;
 
 %% 
@@ -148,7 +151,6 @@ Sectiontype=textscan(fileID,'%s');
 fclose(fileID);
 
 Designation=Sectiontype{1}{o};
-
 
 %Change headname
 
@@ -541,8 +543,6 @@ for i=(nwd1+nwr1+nw+nwr2+nwd2+nf1+nfr1+nfr1+nf1+nf2+nfr2+2):(nwd1+nwr1+nw+nwr2+n
     elem(i,5)=300;
 end
 
-
-
 %% Maximum element length in the cross-section
 Mw=0;%Maximum element length
 for i=1:length(elem(1:(nwd1+nwr1+nw+nwr2+nwd2),1))
@@ -570,20 +570,6 @@ end
 [A,xcg,zcg,Ixx,Izz,Zs] = section_props(node(:,2:3),elem(:,2:4));
 parameters_section = [parameters_section; o, A, Ixx, Izz];
 
-
-%% Renew the nodes and elements
-% Add extra 2 nodes in the joints
-%    node=[node;zeros(2,8)];
-%    node(node_18+1,1)=node_18+1;
-%    node(node_18+1,2:8)=node(node_1,2:8);
-%    node(node_18+2,1)=node_18+2;
-%    node(node_18+2,2:8)=node(node_6,2:8);
-    
-% New elements
-%elem(node_10-2,3)=node_18+1;
-%elem(node_10-1,2)=node_18+1;
-%elem(nwd1+nwr1+nw+nwr2+nwd2+nf1+nfr1+nfr1+nf1+nf2+nfr2,3)=node_18+2;
-%elem(nwd1+nwr1+nw+nwr2+nwd2+nf1+nfr1+nfr1+nf1+nf2+nfr2+1,2)=node_18+2;
 
 %% Element numbers and check the elements
 Elm_section=(node_18-1);               %total number of elements in each section
@@ -663,19 +649,16 @@ end
 
 %You can make a quick dirty plot of the nodal coordinates in the perturbed
 %geometry if you want to see them. This was used in debugging.
-%plot3(shapex,shapey,shapez)
+% plot3(shapex,shapey,shapez)
 
 %% Residual stress pattern  
 
-
 referenceresidual= 235;
-% referenceresidual= Fy;
 
 % Choice of the residual stress pattern
 residual_pattern = 3;      % 1 = Parabolic ; 2 = Triangular ; 3 = Lahiru (Dissanayake et al. 2026)
 Lahiru_equilibrium = 1;    % Lahiru only - web centre stress: 1 = Eq.(9) with fillets (paper)
                            % 2 = Eq.(10) without fillets ; 3 = exact equilibrium of the FE model
-
 
 residual=zeros(Elm_section,1);
 location=zeros(Elm_section,1);
@@ -926,7 +909,7 @@ if residual_pattern==3  % Lahiru: Dissanayake, Yang, Walport & Gardner (2026)
     zc_Lah = hw_Lah/2-(10-3*pi)/(3*(4-pi))*r_Lah; % fillet centroid from web centre, Eq.(7)
 
     % Table 7: stresses at the flange tip and at the flange-web intersection (MPa)
-    if hb_Lah<=1.2
+    if hb_Lah<=1.2 % H
         sig_ft_Lah = -70;
         sig_fw_Lah = 80;
     elseif hb_Lah<=1.8
@@ -1020,7 +1003,6 @@ end
 FEnode_centroid(1,:)=FEnode(kk,:);
 FEnode_centroid(2,:)=FEnode(kk+(nL-1)*nnodes,:);
 FEnode_centroid(3,:)=FEnode(kk+(round(nL/2)-1)*nnodes,:);
-
 
 % % % 
 kk=0;
@@ -1157,6 +1139,7 @@ FEelem=zeros((nL-1),5,length(elem(:,1)));
 end
 %End of element definition
 
+%Add beam element to avoid local instabilitie
 %%%%%%%%%%%%  Beam h_web %%%%%%%%%%%%
 Ffy = Fy*10;
 c_w = H-2*tf1;
@@ -1228,8 +1211,6 @@ end1=[1:1:nnodes];
 end2=end1 + (nL-1)*FEsection_increment;
 middle=FEnode_centroid(1,1) + (nL-1)/2*FEsection_increment;
 
-
-
 web_nodes1=[1:node_6];
 upperflange_nodes1=[node_7:node_12];
 lowerflange_nodes1=[node_13:node_18];
@@ -1250,7 +1231,6 @@ V2 = node_6:step:(floor((max(FEnode(:,1))-1)/step)*step + 1);
 Set_nodes_BC2 = V2(2:end-1);
 
 %% Linear Constrains
-
 
 %% Generate Filename file
     fid = fopen(strcat(Path2,'Filename.dat'),'at');
@@ -1772,15 +1752,25 @@ end
 %     Max_inc=Step(1,4);
 %     Max_nb_inc=Step(1,5);
 
-    % Riks settings from the major-axis member slenderness:
-    % short columns peak early and need small arc-length steps to catch the peak;
-    % long columns reach it only after a long arc length and can take larger steps.
+% [OLD] Riks settings chosen inline -> now riks_control()
+%     % Riks settings from the major-axis member slenderness:
+%     % short columns peak early and need small arc-length steps to catch the peak;
+%     % long columns reach it only after a long arc length and can take larger steps.
+%     lambda_y = sqrt(A*Fy/(pi^2*ME*Ixx/L(1)^2));
+%     if lambda_y <= lambda_switch
+%         Max_inc = riks_short(1);  Max_nb_inc = riks_short(2);
+%     else
+%         Max_inc = riks_long(1);   Max_nb_inc = riks_long(2);
+%     end
+
+    % Riks control from the member slenderness and the stop criteria (see riks_control)
     lambda_y = sqrt(A*Fy/(pi^2*ME*Ixx/L(1)^2));
-    if lambda_y <= lambda_switch
-        Max_inc = riks_short(1);  Max_nb_inc = riks_short(2);
+    if mjglobalampli==0 && miglobalampli~=0
+        mon_dof = 1;  imp_sign = -sign(miglobalampli);   % minor-axis imperfection -> U1
     else
-        Max_inc = riks_long(1);   Max_nb_inc = riks_long(2);
+        mon_dof = 2;  imp_sign = -sign(mjglobalampli);   % major-axis imperfection -> U2 (imperfection is subtracted from the coordinates)
     end
+    riks = riks_control(lambda_y, L(1), FEnode_centroid(3,1), mon_dof, imp_sign, riks_opt);
 
 if analysis==1
    fprintf(fid,'*STEP \r\n');
@@ -1791,19 +1781,21 @@ if analysis==1
     % fprintf(fid,'%3.2d\t\t,%3.2d\t\t,%3.2d\t\t,%3.2d\t\t\r\n',10,[],100,100);
         
 elseif analysis==2||analysis==3    % Elastic static analysis
-    fprintf(fid,'*STEP, name=STEP 1, nlgeom=YES, INC= %g\r\n',Max_nb_inc);
-    %fprintf(fid,'*STEP, name=STEP 1, nlgeom=YES, INC= 350\r\n');
-    fprintf(fid,'*STATIC,Riks\r\n');%*STATIC,Direct,Riks
-    
-    if Loading==0
-        %fprintf(fid,'%f\t\t,%d\t\t,%.16f\t\t,%f\t\t\r\n',0.3*L/(B1+H)/280 , 1, 0.000000000000001, L/(B1+H)/70); 
-        %fprintf(fid,'0.1 , 1, 0.000000000000001, 0.5	\r\n');
-        fprintf(fid,'%f\t\t,%d\t\t,%.16f\t\t,%f\t\t\r\n',Initial_inc, Scale_fact, Min_inc, Max_inc);
-    else
-        fprintf(fid,'%f\t\t,%d\t\t,%.16f\t\t,%f\t\t\r\n',Initial_inc, Scale_fact, Min_inc, Max_inc);
-        %fprintf(fid,'0.005 , 1, 0.000000000000001, 0.08	\r\n');
-        %fprintf(fid,'%f\t\t,%d\t\t,%.16f\t\t,%f\t\t\r\n',0.3*L/(B1+H)/280 , 1, 0.000000000000001, L/(B1+H)/70); 
-    end   
+% [OLD] Riks step written inline -> now write_riks_step()
+%     fprintf(fid,'*STEP, name=STEP 1, nlgeom=YES, INC= %g\r\n',Max_nb_inc);
+%     %fprintf(fid,'*STEP, name=STEP 1, nlgeom=YES, INC= 350\r\n');
+%     fprintf(fid,'*STATIC,Riks\r\n');%*STATIC,Direct,Riks
+%
+%     if Loading==0
+%         %fprintf(fid,'%f\t\t,%d\t\t,%.16f\t\t,%f\t\t\r\n',0.3*L/(B1+H)/280 , 1, 0.000000000000001, L/(B1+H)/70);
+%         %fprintf(fid,'0.1 , 1, 0.000000000000001, 0.5	\r\n');
+%         fprintf(fid,'%f\t\t,%d\t\t,%.16f\t\t,%f\t\t\r\n',Initial_inc, Scale_fact, Min_inc, Max_inc);
+%     else
+%         fprintf(fid,'%f\t\t,%d\t\t,%.16f\t\t,%f\t\t\r\n',Initial_inc, Scale_fact, Min_inc, Max_inc);
+%         %fprintf(fid,'0.005 , 1, 0.000000000000001, 0.08	\r\n');
+%         %fprintf(fid,'%f\t\t,%d\t\t,%.16f\t\t,%f\t\t\r\n',0.3*L/(B1+H)/280 , 1, 0.000000000000001, L/(B1+H)/70);
+%     end
+    write_riks_step(fid, riks);
 end
 
 %% STATIC ANALYSIS   ---- NONLINER
@@ -1977,4 +1969,76 @@ if any(diff(eps_pl)<=0)
 end
 
 info = struct('eps_y',eps_y,'eps_sh',eps_sh,'eps_u',eps_u,'Esh',Esh);
+end
+
+function riks = riks_control(lambda, L, mon_node, mon_dof, imp_sign, opt)
+%RIKS_CONTROL  Arc-length (Riks) control parameters of the GMNIA step.
+%
+%   riks = RIKS_CONTROL(lambda, L, mon_node, mon_dof, imp_sign, opt)
+%
+%   The Riks step ends at the first of the following criteria:
+%     1. maximum number of increments                     (riks.n_inc)
+%     2. arc-length increment below the minimum value     (riks.min_inc)
+%     3. mid-length deflection reaching L/opt.defl_ratio  (riks.u_stop)
+%
+%   Short members (lambda <= opt.lambda_switch) reach the peak after a short
+%   arc length and need small increments to capture it; long members reach
+%   it after a long arc length and can use larger increments.
+%
+%   Inputs
+%     lambda    non-dimensional major-axis slenderness, sqrt(A*fy/Ncr)
+%     L         member length [mm]
+%     mon_node  label of the monitored node (mid-length)
+%     mon_dof   monitored degree of freedom (1 = U1, 2 = U2)
+%     imp_sign  sign of the expected deflection (+1 / -1), 0 if unknown
+%     opt       options: initial_inc, scale_fact, min_inc, lambda_switch,
+%               short = [max_inc n_inc], long = [max_inc n_inc], defl_ratio
+%
+%   Output (struct)
+%     initial_inc, scale_fact, min_inc, max_inc, n_inc, regime,
+%     node, dof, u_stop ([] when the deflection criterion is not used)
+
+    if lambda <= opt.lambda_switch
+        regime = 'short';  settings = opt.short;
+    else
+        regime = 'long';   settings = opt.long;
+    end
+
+    riks.initial_inc = opt.initial_inc;
+    riks.scale_fact  = opt.scale_fact;
+    riks.min_inc     = opt.min_inc;
+    riks.max_inc     = settings(1);
+    riks.n_inc       = settings(2);
+    riks.regime      = regime;
+    riks.node        = mon_node;
+    riks.dof         = mon_dof;
+    riks.u_stop      = [];
+
+    if opt.defl_ratio > 0
+        if imp_sign == 0
+            warning('riks_control:noSign', ...
+                'Deflection direction unknown (no global imperfection): deflection criterion not used.');
+        else
+            riks.u_stop = imp_sign * L / opt.defl_ratio;   % signed: Abaqus stops when this value is crossed
+        end
+    end
+end
+
+function write_riks_step(fid, riks)
+%WRITE_RIKS_STEP  Write the *STEP and *STATIC, RIKS lines of the GMNIA step.
+%
+%   Riks data line: initial increment, arc-length scale factor, minimum
+%   increment, maximum increment, maximum LPF (not used), monitored node,
+%   degree of freedom, displacement value that ends the step.
+
+    fprintf(fid,'*STEP, name=STEP 1, nlgeom=YES, INC=%d\r\n', riks.n_inc);
+    fprintf(fid,'*STATIC, RIKS\r\n');
+    if isempty(riks.u_stop)
+        fprintf(fid,'%g, %g, %g, %g\r\n', ...
+            riks.initial_inc, riks.scale_fact, riks.min_inc, riks.max_inc);
+    else
+        fprintf(fid,'%g, %g, %g, %g, , %d, %d, %.3f\r\n', ...
+            riks.initial_inc, riks.scale_fact, riks.min_inc, riks.max_inc, ...
+            riks.node, riks.dof, riks.u_stop);
+    end
 end
