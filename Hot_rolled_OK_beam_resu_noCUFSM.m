@@ -154,8 +154,14 @@ Designation=Sectiontype{1}{o};
 
 headname_original = strcat(First_headname_original,'_',num2str(Fy),'_',Designation,'_',num2str(Temperature));
 
+% [OLD] mesh values read from file 2 -> now nwH/nwI in "Mesh and Riks parameters" at the top
+% %Meshsize values
+% Meshsize=dlmread('2. General_parameters.dat');
+%
+% nwH=Meshsize(1,6);
+% nwI=Meshsize(1,7);
 
-%nw=parameters(o,20);  
+%nw=parameters(o,20);
 if (H/(0.5*(B1+B2)))<1.2  % <1.2 H section; >1.2 I section
     nw=nwH;
     %nw=15
@@ -1378,6 +1384,9 @@ if analysis==2||analysis==3
 if Loading==1
     % fprintf(fid,'%s \r\n',['session.xyDataListFromField(odb=odb, outputPosition=NODAL, variable=((''U'', NODAL, ((COMPONENT, ''U3''), )), ), nodeSets=(''PART-1-1.END1'', ))']);
     % fprintf(fid,'%s \r\n',['session.xyDataObjects.changeKey(fromName=''U:U3 PI: PART-1-1 N: ' num2str(FEnode_centroid(1,1)) ''',toName=''U''+str(' 'n' ')+''__' num2str(Number) ''')']);
+    % [OLD] U1 is ~0 for every job (the global imperfection is in Y)
+    % fprintf(fid,'%s \r\n',['session.xyDataListFromField(odb=odb, outputPosition=NODAL, variable=((''U'', NODAL, ((COMPONENT, ''U1''), )), ), nodeLabels=((''PART-1-1'', (''' num2str(FEnode_centroid(3,1)) ''' ,)), ))']);
+    % fprintf(fid,'%s \r\n',['session.xyDataObjects.changeKey(fromName=''U:U1 PI: PART-1-1 N: ' num2str(FEnode_centroid(3,1)) ''', toName=''U_''+str(' 'n' ')+''__' num2str(Number) ''')']);
     % lateral deflection at mid-length in the direction of the global imperfection (major axis -> U2)
     if mjglobalampli==0 && miglobalampli~=0, Ucomp='U1'; else, Ucomp='U2'; end
     fprintf(fid,'%s \r\n',['session.xyDataListFromField(odb=odb, outputPosition=NODAL, variable=((''U'', NODAL, ((COMPONENT, ''' Ucomp '''), )), ), nodeLabels=((''PART-1-1'', (''' num2str(FEnode_centroid(3,1)) ''' ,)), ))']);
@@ -1451,7 +1460,8 @@ end
     fprintf(fid,'%s \r\n','All units are in N & mm');
     fprintf(fid,'%s %d %s \r\n','Total column length =',L,'mm');
     fprintf(fid,'%s \r\n',[savename,' ',datestr(now)]);
-    % no *RESTART, WRITE: restart files were never read and cost up to 19 GB per job
+    % [OLD] restart files were never read and cost up to 19 GB per job
+    % fprintf(fid,'%s \r\n','*RESTART, WRITE');
 
     fprintf(fid,'%s \r\n','*****************************');
     fprintf(fid,'%s \r\n','**Node set for end boundary conditions');
@@ -1751,6 +1761,16 @@ if analysis==2||analysis==3
 end
 end
 %% STEP
+
+% [OLD] Riks parameters read from file 2 -> now at the top of the file (Initial_inc, Scale_fact, Min_inc)
+%       and from riks_short / riks_long (Max_inc, Max_nb_inc)
+% Step=dlmread('2. General_parameters.dat');
+%
+%     Initial_inc=Step(1,1);
+%     Scale_fact=Step(1,2);
+%     Min_inc=Step(1,3);
+%     Max_inc=Step(1,4);
+%     Max_nb_inc=Step(1,5);
 
     % Riks settings from the major-axis member slenderness:
     % short columns peak early and need small arc-length steps to catch the peak;
